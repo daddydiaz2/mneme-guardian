@@ -40,6 +40,9 @@ pub enum Commands {
     /// Show current configuration
     Config,
 
+    /// Launch interactive TUI
+    Tui,
+
     /// Show version
     Version,
 }

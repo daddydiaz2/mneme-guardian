@@ -21,8 +21,13 @@ fn main() -> anyhow::Result<()> {
             review::run_review(&cfg, ci, !no_cache)?;
         }
         cli::Commands::Config => config::show_config()?,
+        cli::Commands::Tui => mneme_guardian::tui::run_tui()?,
         cli::Commands::Version => {
             println!("mneme-guardian v{}", env!("CARGO_PKG_VERSION"));
+            mneme_guardian::update::print_update_status(
+                "mneme-guardian",
+                env!("CARGO_PKG_VERSION"),
+            );
         }
     }
 

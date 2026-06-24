@@ -5,3 +5,5 @@ pub mod hooks;
 pub mod mneme;
 pub mod providers;
 pub mod review;
+pub mod update;
+pub mod tui;
