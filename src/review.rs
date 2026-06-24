@@ -2,7 +2,6 @@ use crate::config::Config;
 use crate::diff;
 use crate::mneme;
 use crate::providers;
-use crate::providers;
 
 /// Run a full review cycle
 pub fn run_review(config: &Config, ci_mode: bool, use_cache: bool) -> anyhow::Result<()> {
