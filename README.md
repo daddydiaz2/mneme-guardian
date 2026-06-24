@@ -4,13 +4,25 @@
 
 Pre-commit reviews that catch issues before they hit the repo. Works with any AI provider and optionally saves results to [mneme](https://github.com/daddydiaz2/mneme) for searchable review history.
 
-Inspired by [Gentleman Guardian Angel](https://github.com/Gentleman-Programming/gentleman-guardian-angel) but built in Rust with mneme integration.
+[![crates.io](https://img.shields.io/badge/crates.io-mneme--guardian-orange)](https://crates.io/crates/mneme-guardian)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
+Inspired by [Gentleman Guardian Angel](https://github.com/Gentleman-Programming/gentleman-guardian-angel) but built in Rust with [mneme-brain](https://github.com/daddydiaz2/mneme) integration.
+
+## Install
+
+```bash
+# crates.io
+cargo install mneme-guardian
+
+# Homebrew
+brew tap daddydiaz2/homebrew-tap
+brew install mneme-guardian
+```
 
 ## Quick Start
 
 ```bash
-cargo install mneme-guardian
-
 cd your-project
 
 # Create config
@@ -67,16 +79,19 @@ Disable with: `MNEME_G_MNEME=false mneme-g run`
 
 ## CI Integration
 
-```bash
-# GitHub Actions step
+```yaml
+# .github/workflows/review.yml
 - name: Code Review
   run: mneme-g run --ci
 ```
 
-## Exit Codes
+## Full Ecosystem
 
-- **0**: No issues found (or warnings only)
-- **1**: BLOCKER issues found (exit configured via `exit_on_issues`)
+```bash
+cargo install mneme-brain      # 🧠  mneme binary
+cargo install mneme-ai         # 🤖  mneme-ai binary
+cargo install mneme-guardian   # 😇  mneme-g binary
+```
 
 ## License
 
