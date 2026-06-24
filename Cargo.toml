@@ -5,6 +5,10 @@ edition = "2021"
 description = "mneme-guardian — Provider-agnostic AI code review. Pre-commit guardian with mneme memory integration."
 license = "MIT"
 repository = "https://github.com/daddydiaz2/mneme-guardian"
+homepage = "https://github.com/daddydiaz2/mneme-guardian"
+documentation = "https://github.com/daddydiaz2/mneme-guardian#readme"
+keywords = ["ai", "code-review", "pre-commit", "guardian", "mcp"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "mneme-g"
@@ -22,6 +26,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
 
 [profile.release]
 opt-level = 3

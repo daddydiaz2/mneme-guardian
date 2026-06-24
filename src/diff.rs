@@ -42,19 +42,23 @@ pub fn get_last_commit_diff() -> anyhow::Result<String> {
     Ok(diff)
 }
 
-/// Get changed file list from diff
+/// Get unique changed file list from diff
 pub fn get_changed_files(diff: &str) -> Vec<String> {
-    diff.lines()
-        .filter(|l| l.starts_with("+++ b/") || l.starts_with("--- a/"))
+    let mut files: Vec<String> = diff
+        .lines()
+        .filter(|l| l.starts_with("+++ b/"))
         .filter_map(|l| {
-            let path = l.trim_start_matches("+++ b/").trim_start_matches("--- a/");
+            let path = l.trim_start_matches("+++ b/");
             if path != "/dev/null" {
                 Some(path.to_string())
             } else {
                 None
             }
         })
-        .collect()
+        .collect();
+    files.sort();
+    files.dedup();
+    files
 }
 
 /// Detect project name from git remote or cwd

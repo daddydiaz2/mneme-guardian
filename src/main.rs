@@ -1,12 +1,8 @@
-mod cli;
-mod config;
-mod diff;
-mod hooks;
-mod providers;
-mod review;
-mod mneme;
-
 use clap::Parser;
+use mneme_guardian::cli;
+use mneme_guardian::config;
+use mneme_guardian::hooks;
+use mneme_guardian::review;
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
