@@ -1,0 +1,264 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ─── mneme-guardian (mneme-g) ───────────────────────────────────────────────
+# Provider-agnostic AI code review. Pre-commit guardian + optional mneme sync.
+# Usage: mneme-g <command> [options]
+# ────────────────────────────────────────────────────────────────────────────
+
+VERSION="0.1.0"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/mneme-guardian"
+CONFIG_FILE="$CONFIG_DIR/config.sh"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/mneme-guardian"
+
+# ─── Colors ─────────────────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
+ok()   { echo -e "${GREEN}✓${RESET} $1"; }
+info() { echo -e "${CYAN}ℹ${RESET} $1"; }
+warn() { echo -e "${YELLOW}⚠${RESET} $1"; }
+fail() { echo -e "${RED}✗${RESET} $1"; exit "${2:-1}"; }
+
+# ─── Defaults ───────────────────────────────────────────────────────────────
+PROVIDER="${MNEME_G_PROVIDER:-opencode}"
+MODEL="${MNEME_G_MODEL:-}"
+RULES_FILE="${MNEME_G_RULES:-$PWD/AGENTS.md}"
+MNEME_ENABLED="${MNEME_G_MNEME:-true}"
+
+# ─── Help ───────────────────────────────────────────────────────────────────
+usage() {
+  cat <<EOF
+${BOLD}mneme-guardian v$VERSION${RESET} — AI code review guardian
+
+${BOLD}Usage:${RESET}     mneme-g <command> [options]
+
+${BOLD}Commands:${RESET}
+  init          Create default config
+  install       Install git pre-commit hook
+  uninstall     Remove git hook
+  run           Review staged files
+  run --ci      Review last commit (CI mode)
+  config        Show current configuration
+  version       Show version
+
+${BOLD}Environment:${RESET}
+  MNEME_G_PROVIDER   AI provider (claude|gemini|opencode|codex|ollama)  [opencode]
+  MNEME_G_MODEL      Model override (provider-specific)
+  MNEME_G_RULES      Path to rules file (default: ./AGENTS.md)
+  MNEME_G_MNEME      Save results to mneme memory (true|false)         [true]
+
+${BOLD}Examples:${RESET}
+  mneme-g init
+  mneme-g install
+  mneme-g run
+  MNEME_G_PROVIDER=claude mneme-g run
+
+EOF
+  exit 0
+}
+
+# ─── Config ─────────────────────────────────────────────────────────────────
+create_config() {
+  mkdir -p "$CONFIG_DIR"
+  if [[ -f "$CONFIG_FILE" ]]; then
+    warn "Config already exists: $CONFIG_FILE"
+    return
+  fi
+  cat > "$CONFIG_FILE" <<'CONFIG'
+# mneme-guardian configuration
+# Override with environment variables: MNEME_G_*
+
+# AI provider: claude | gemini | opencode | codex | ollama
+PROVIDER="opencode"
+
+# Model override (leave empty for provider default)
+MODEL=""
+
+# Path to rules file (AGENTS.md style)
+RULES_FILE="./AGENTS.md"
+
+# Save review results to mneme persistent memory
+MNEME_ENABLED=true
+
+# Maximum lines to review per file (0 = unlimited)
+MAX_LINES=0
+
+# Exit code on issues found (0 = warn only, 1 = block commit)
+EXIT_ON_ISSUES=true
+CONFIG
+  ok "Created config: $CONFIG_FILE"
+}
+
+# ─── Providers ──────────────────────────────────────────────────────────────
+review_with_opencode() {
+  local prompt="$1"
+  opencode run "Review this code diff and report issues. Rules: $prompt" 2>/dev/null
+}
+
+review_with_claude() {
+  local prompt="$1"
+  claude -p "You are a code reviewer. Review this diff:\n\n$prompt" 2>/dev/null
+}
+
+review_with_gemini() {
+  local prompt="$1"
+  gemini -p "You are a code reviewer. Review this diff:\n\n$prompt" 2>/dev/null
+}
+
+review_with_codex() {
+  local prompt="$1"
+  codex run -p "Review this diff:\n\n$prompt" 2>/dev/null
+}
+
+review_with_ollama() {
+  local prompt="$1"
+  local model="${MODEL:-qwen2.5-coder:7b}"
+  ollama run "$model" "Review this diff:\n\n$prompt" 2>/dev/null
+}
+
+run_review() {
+  local diff_content="$1"
+  local rules=""
+  [[ -f "$RULES_FILE" ]] && rules="$(cat "$RULES_FILE")"
+
+  local prompt=""
+  prompt+="You are a strict code reviewer.\n"
+  prompt+="Review the following git diff and report:\n"
+  prompt+="- BLOCKER issues (security, data loss, broken behavior)\n"
+  prompt+="- CRITICAL issues (incorrect logic, missing edge cases)\n"
+  prompt+="- WARNING issues (code smells, readability, maintainability)\n"
+  prompt+="- SUGGESTION issues (minor improvements)\n\n"
+  [[ -n "$rules" ]] && prompt+="Project rules:\n$rules\n\n"
+  prompt+="Diff to review:\n\`\`\`diff\n$diff_content\n\`\`\`\n"
+  prompt+="\nOutput format:\n## {severity}: {title}\n- File: {file}\n- Why: {reason}\n- Fix: {suggestion}"
+
+  case "$PROVIDER" in
+    opencode) review_with_opencode "$prompt" ;;
+    claude)   review_with_claude "$prompt" ;;
+    gemini)   review_with_gemini "$prompt" ;;
+    codex)    review_with_codex "$prompt" ;;
+    ollama)   review_with_ollama "$prompt" ;;
+    *)        fail "Unknown provider: $PROVIDER. Supported: claude, gemini, opencode, codex, ollama" ;;
+  esac
+}
+
+# ─── Mneme integration ──────────────────────────────────────────────────────
+save_to_mneme() {
+  local project="$1" result="$2" has_issues="$3"
+  [[ "$MNEME_ENABLED" != "true" ]] && return
+  command -v mneme &>/dev/null || return
+
+  local importance="low"
+  [[ "$has_issues" == "true" ]] && importance="medium"
+
+  mneme save \
+    --project "$project" \
+    --title "Code review: $(date '+%Y-%m-%d %H:%M')" \
+    --type review \
+    --importance "$importance" \
+    --tags "code-review,$PROVIDER" \
+    --content "$result" 2>/dev/null || true
+}
+
+# ─── Run ─────────────────────────────────────────────────────────────────────
+cmd_run() {
+  local ci_mode=false
+  [[ "${1:-}" == "--ci" ]] && ci_mode=true
+
+  # Get diff
+  local diff_content=""
+  if $ci_mode; then
+    diff_content="$(git diff HEAD~1 -- 2>/dev/null || true)"
+    [[ -z "$diff_content" ]] && { info "No diff to review. Skipping."; exit 0; }
+  else
+    diff_content="$(git diff --cached -- 2>/dev/null || true)"
+    [[ -z "$diff_content" ]] && { info "No staged changes to review. Skipping."; exit 0; }
+  fi
+
+  # Detect project name
+  local project=""
+  project="$(basename "$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")")"
+  info "Reviewing ${project} via ${PROVIDER}..."
+
+  # Run review
+  local result
+  result="$(run_review "$diff_content")" || true
+
+  echo -e "\n${BOLD}── Review Results ──${RESET}"
+  echo "$result"
+
+  # Check for blockers
+  local has_blockers=false
+  if echo "$result" | grep -qi "BLOCKER"; then
+    has_blockers=true
+  fi
+
+  # Save to mneme
+  save_to_mneme "$project" "$result" "$has_blockers"
+
+  # Exit with status
+  if $has_blockers && [[ "${EXIT_ON_ISSUES:-true}" == "true" ]]; then
+    fail "BLOCKER issues found. Fix before commit." 1
+  fi
+
+  ok "Review complete."
+}
+
+# ─── Hooks ──────────────────────────────────────────────────────────────────
+cmd_install() {
+  local hook_file=".git/hooks/pre-commit"
+  mkdir -p .git/hooks
+
+  cat > "$hook_file" <<'HOOK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+# mneme-guardian pre-commit hook
+# Generated by: mneme-g install
+
+MNEME_G_PROVIDER="${MNEME_G_PROVIDER:-opencode}" exec mneme-g run
+HOOK
+  chmod +x "$hook_file"
+  ok "Pre-commit hook installed: $hook_file"
+}
+
+cmd_uninstall() {
+  local hook_file=".git/hooks/pre-commit"
+  if [[ -f "$hook_file" ]] && head -1 "$hook_file" | grep -q "mneme-guardian"; then
+    rm "$hook_file"
+    ok "Pre-commit hook removed."
+  else
+    info "No mneme-guardian hook found."
+  fi
+}
+
+# ─── Config display ─────────────────────────────────────────────────────────
+cmd_config() {
+  echo -e "${BOLD}mneme-guardian configuration${RESET}"
+  echo "  Provider:      ${PROVIDER}"
+  echo "  Model:         ${MODEL:-<default>}"
+  echo "  Rules file:    ${RULES_FILE}"
+  echo "  Mneme sync:    ${MNEME_ENABLED}"
+  echo "  Config dir:    ${CONFIG_DIR}"
+  echo "  Cache dir:     ${CACHE_DIR}"
+}
+
+# ─── Main ───────────────────────────────────────────────────────────────────
+main() {
+  [[ -f "$CONFIG_FILE" ]] && source "$CONFIG_FILE"
+
+  local cmd="${1:-help}"; shift 2>/dev/null || true
+
+  case "$cmd" in
+    init)      create_config ;;
+    install)   cmd_install ;;
+    uninstall) cmd_uninstall ;;
+    run)       cmd_run "${1:-}" ;;
+    config)    cmd_config ;;
+    version)   echo "mneme-guardian v$VERSION" ;;
+    help|--help|-h) usage ;;
+    *)         fail "Unknown command: $cmd. Use 'mneme-g help'." ;;
+  esac
+}
+
+main "$@"

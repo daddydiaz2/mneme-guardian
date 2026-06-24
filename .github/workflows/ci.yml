@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ShellCheck
+        run: |
+          shellcheck bin/mneme-g install.sh uninstall.sh
+
+  test-install:
+    name: Test install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test installer
+        run: |
+          bash install.sh
+          command -v mneme-g
+          mneme-g version
+
+  test-run:
+    name: Test run (syntax only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test init + run syntax
+        run: |
+          mkdir -p /tmp/test-repo && cd /tmp/test-repo
+          git init && git config user.email "test@test" && git config user.name "test"
+          echo "test" > test.txt && git add test.txt
+          bash "$GITHUB_WORKSPACE/bin/mneme-g" init
+          bash "$GITHUB_WORKSPACE/bin/mneme-g" config
+          echo "✓ Syntax check passed"
